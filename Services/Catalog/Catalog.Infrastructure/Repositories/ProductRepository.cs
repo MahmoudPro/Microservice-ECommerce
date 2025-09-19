@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Catalog.Application.Responses;
 using Catalog.Core.Entities;
 using Catalog.Core.Interfaces.Repositories;
+using Catalog.Core.Specs;
 using Catalog.Infrastructure.Data.Contexts;
 using MongoDB.Driver;
 
@@ -31,9 +33,29 @@ namespace Catalog.Infrastructure.Repositories
         {
             return await context.Products.Find(p => p.Name == name).ToListAsync();
         }
-        public async Task<IEnumerable<Product>> GetAllProductsAsync()
+        public async Task<Pagination<Product>> GetAllProductsAsync(CatalogSpecParams catalogSpecParams)
         {
-            return await context.Products.Find(p => true).ToListAsync();
+            var filter = Builders<Product>.Filter.Empty;
+            if (!string.IsNullOrEmpty(catalogSpecParams.Search))
+            {
+                filter = filter & Builders<Product>.Filter.Regex(p => p.Name, new MongoDB.Bson.BsonRegularExpression(catalogSpecParams.Search, "i"));
+            }
+            if (!string.IsNullOrEmpty(catalogSpecParams.BrandId))
+            {
+                filter = filter & Builders<Product>.Filter.Eq(p => p.Brand.Id, catalogSpecParams.BrandId);
+            }
+            if (catalogSpecParams.TypeId != null)
+            {
+                filter = filter & Builders<Product>.Filter.Eq(p => p.Type.Id, catalogSpecParams.TypeId);
+            }
+            var totalItems = await context.Products.CountDocumentsAsync(filter);
+            var products = await DataFilterAsync(catalogSpecParams, filter);
+            return new Pagination<Product>(
+                    catalogSpecParams.PageIndex,
+                    catalogSpecParams.PageSize,
+                    (int)totalItems,
+                    products
+                );
         }
 
         public async Task<Product> AddProductAsync(Product product)
@@ -62,6 +84,40 @@ namespace Catalog.Infrastructure.Repositories
         {
             return await context.ProductTypes.Find(t => true).ToListAsync();
         }
+
+        public async Task<IReadOnlyList<Product>> DataFilterAsync(CatalogSpecParams catalogSpecParams, FilterDefinition<Product> filter)
+        {
+            var defSort = Builders<Product>.Sort.Ascending(p => p.Name);
+            if (!string.IsNullOrEmpty(catalogSpecParams.Sort))
+            {
+                switch (catalogSpecParams.Sort.ToLower())
+                {
+                    case "nameasc":
+                        defSort = Builders<Product>.Sort.Ascending(p => p.Name);
+                        break;
+                    case "namedesc":
+                        defSort = Builders<Product>.Sort.Descending(p => p.Name);
+                        break;
+                    case "priceasc":
+                        defSort = Builders<Product>.Sort.Ascending(p => p.Price);
+                        break;
+                    case "pricedesc":
+                        defSort = Builders<Product>.Sort.Descending(p => p.Price);
+                        break;
+                    default:
+                        defSort = Builders<Product>.Sort.Ascending(p => p.Name);
+                        break;
+                }
+            }
+            return await context
+                 .Products
+                 .Find(filter)
+                 .Sort(defSort)
+                 .Skip(catalogSpecParams.PageSize * (catalogSpecParams.PageIndex - 1))
+                 .Limit(catalogSpecParams.PageSize)
+                 .ToListAsync();
+        }
+
 
 
 
