@@ -1,11 +1,11 @@
-services:
+﻿services:
   catalog.api:
     image: ${DOCKER_REGISTRY-}catalogapi
     build:
       context: .
       dockerfile: Services/Catalog/Catalog.API/Dockerfile
     ports:
-      - "8001:8000" # ??? ?????? ?? ?????? ???????
+      - "8001:8000" # ربط البورت من الجهاز للمشروع
     depends_on:
       - catalogdb
     environment:
@@ -24,5 +24,25 @@ services:
       - "27017:27017"
     volumes:
       - catalogdata:/data/db
+  basketdb:
+    image: redis:alpine
+    container_name: basketdb
+    restart: always
+    ports:
+      - "6379:6379"
+  basket.api:
+    image: ${DOCKER_REGISTRY-}basketapi
+    build:
+      context: .
+      dockerfile: services/Basket/Basket.API/Dockerfile
+    ports:
+      - "8002:8000" # ربط البورت من الجهاز للمشروع
+    depends_on:
+      - basketdb
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8000
+      - CacheSettings__ConnectionString=basketdb:6379
 volumes:
     catalogdata:
+    
